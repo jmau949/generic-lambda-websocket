@@ -15,7 +15,6 @@ export * from "./services/message.service";
 
 // Export utilities
 export * from "./utils/lambda";
-export * from "./utils/fastify";
 export * from "./utils/websocket";
 
 // Export config
