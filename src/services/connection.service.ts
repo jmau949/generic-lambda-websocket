@@ -9,7 +9,9 @@ export interface Connection {
   domainName?: string;
   stage?: string;
   userId?: string;
+  userEmail?: string;
   ttl?: number;
+  isAuthenticated?: boolean;
 }
 
 

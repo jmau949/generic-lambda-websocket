@@ -10,6 +10,19 @@ Globals:
     Environment:
       Variables:
         CONNECTIONS_TABLE: !Ref ConnectionsTable
+        COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+        COGNITO_CLIENT_ID: !Ref CognitoClientId
+
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID
+    Default: ''
+  
+  CognitoClientId:
+    Type: String
+    Description: Cognito Client ID
+    Default: ''
 
 Resources:
   WebSocketApi:

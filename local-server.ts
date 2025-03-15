@@ -21,9 +21,11 @@ const connections = new Map<string, any>();
 const sockets = new Map<string, WebSocket>();
 
 // Configure environment before importing any AWS SDK modules
-process.env.AWS_REGION = 'us-east-1';
-process.env.CONNECTIONS_TABLE = 'local-connections-table';
-process.env.LOCAL_DEVELOPMENT = 'true';
+process.env.AWS_REGION = "us-east-1";
+process.env.CONNECTIONS_TABLE = "local-connections-table";
+process.env.COGNITO_USER_POOL_ID = "us-east-1_example"; // Replace with your actual user pool ID for testing
+process.env.COGNITO_CLIENT_ID = "example"; // Replace with your actual client ID for testing
+process.env.LOCAL_DEVELOPMENT = "true";
 
 // Import the WebSocket handlers
 import { handler as connectHandler } from './src/handlers/connect';

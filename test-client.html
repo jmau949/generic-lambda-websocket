@@ -79,8 +79,18 @@
   <div>
     <input type="text" id="websocket-url" placeholder="WebSocket URL (wss://...)" 
            value="ws://localhost:3000" style="width: 400px; padding: 8px;">
-    <button id="connect-btn">Connect</button>
-    <button id="disconnect-btn" disabled>Disconnect</button>
+    <div style="margin-top: 10px;">
+      <p style="margin: 0 0 5px 0; font-size: 14px;">Authentication Token (JWT) - <strong>Required</strong>:</p>
+      <input type="text" id="auth-token" placeholder="Paste your JWT token here" 
+             value="" style="width: 400px; padding: 8px;">
+      <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">
+        Note: For WebSockets, HTTP-only cookies cannot be used. The token must be provided explicitly.
+      </p>
+    </div>
+    <div style="margin-top: 10px;">
+      <button id="connect-btn">Connect</button>
+      <button id="disconnect-btn" disabled>Disconnect</button>
+    </div>
   </div>
   
   <h2>Messages</h2>
@@ -101,19 +111,75 @@
     const messagesContainer = document.getElementById('messages');
     const connectionStatus = document.getElementById('connection-status');
     const websocketUrlInput = document.getElementById('websocket-url');
+    const authTokenInput = document.getElementById('auth-token');
+    
+    /**
+     * Helper function to extract token from browser cookies
+     * (Only for convenience in transferring the token from cookies to query param)
+     */
+    function getTokenFromCookies(cookieName = 'auth') {
+      const cookies = document.cookie.split(';');
+      for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === cookieName) {
+          return value;
+        }
+      }
+      return null;
+    }
+    
+    // Try to pre-fill token from cookie if available
+    document.addEventListener('DOMContentLoaded', () => {
+      const token = getTokenFromCookies();
+      if (token) {
+        authTokenInput.value = token;
+        console.log('Auth token loaded from cookie for convenience');
+      }
+    });
     
     // Connect to WebSocket
     connectBtn.addEventListener('click', () => {
       const websocketUrl = websocketUrlInput.value.trim();
+      const authToken = authTokenInput.value.trim();
       
       if (!websocketUrl) {
         alert('Please enter a WebSocket URL');
         return;
       }
       
+      if (!authToken) {
+        alert('Authentication token is required. WebSockets cannot access HTTP-only cookies.');
+        return;
+      }
+      
       try {
-        socket = new WebSocket(websocketUrl);
+        // Always append token as query parameter (required for WebSocket auth)
+        let connectionUrl = websocketUrl;
+        connectionUrl += connectionUrl.includes('?') 
+          ? `&token=${encodeURIComponent(authToken)}`
+          : `?token=${encodeURIComponent(authToken)}`;
+        
+        // Add a connection timeout handler for auth failures
+        const connectionTimeout = setTimeout(() => {
+          if (socket && socket.readyState === 0) { // Still in CONNECTING state
+            displayMessage('Connection timed out. This may be due to an authentication failure.', 'error');
+            socket.close();
+            updateConnectionStatus('disconnected');
+            disconnectBtn.disabled = true;
+            connectBtn.disabled = false;
+          }
+        }, 10000); // 10 seconds timeout
+        
+        socket = new WebSocket(connectionUrl);
         updateConnectionStatus('connecting');
+        
+        socket.onopen = () => {
+          clearTimeout(connectionTimeout);
+          updateConnectionStatus('connected');
+          disconnectBtn.disabled = false;
+          sendBtn.disabled = false;
+          connectBtn.disabled = true;
+        };
         
         socket.onopen = () => {
           updateConnectionStatus('connected');

@@ -50,5 +50,7 @@ export const extractConnectionInfo = (
     connectionId: event.requestContext.connectionId,
     domainName: event.requestContext.domainName,
     stage: event.requestContext.stage,
+    queryParams:
+      "queryStringParameters" in event ? event.queryStringParameters || {} : {}, // Use in-operator for safe access
   };
 };

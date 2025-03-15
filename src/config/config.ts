@@ -8,13 +8,12 @@ export const config = {
   // AWS region
   region: process.env.AWS_REGION || "us-east-1",
   auth: {
-    required: process.env.AUTH_REQUIRED !== 'false', // Default to requiring auth
     jwksCacheTTL: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
   },
 
   // Cognito configuration
   cognito: {
-    userPoolId: process.env.COGNITO_USER_POOL_ID || '',
-    clientId: process.env.COGNITO_CLIENT_ID || '',
-  }
+    userPoolId: process.env.COGNITO_USER_POOL_ID || "",
+    clientId: process.env.COGNITO_CLIENT_ID || "",
+  },
 };
