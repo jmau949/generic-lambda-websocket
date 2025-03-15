@@ -27,30 +27,31 @@ fastify-websocket-api/
 npm install
 ```
 
-### Development Options
+## Development Workflow
 
-#### Option 1: Run the Local WebSocket Server (Recommended for Development)
+### Local Development Server
 
-This standalone server runs independently from AWS resources and is ideal for rapid development:
+The project includes a local development server (`local-server.ts`) that:
+
+1. **Uses your actual application code** from the `src/` directory
+2. **Mocks AWS services** (DynamoDB, API Gateway) in memory
+3. **Simulates the AWS WebSocket API Gateway** environment
+
+This means you can develop and test your code locally using the same codebase that will be deployed to AWS. You don't need to maintain separate code for local development and production.
 
 ```bash
-# Start the local WebSocket server
+# Start the local development server
 npm run local
 ```
 
-The WebSocket server will be available at `ws://localhost:3000`
+When you run the local server:
+- It imports and uses your handlers from `src/handlers/`
+- All database operations are redirected to an in-memory store
+- WebSocket messages are properly routed to your handler functions
+- You can see logs and debug your application code directly
 
-#### Option 2: Run with SAM Local (For AWS Integration Testing)
+The local server acts as a bridge between your browser and your Lambda handlers, simulating the role of API Gateway.
 
-If you need to test with the full AWS infrastructure locally:
-
-```bash
-# Build the TypeScript project
-npm run build
-
-# Start the SAM local API
-npm run start
-```
 
 ### Testing
 
