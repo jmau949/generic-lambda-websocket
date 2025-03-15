@@ -13,10 +13,6 @@ export { handler as defaultHandler } from "./handlers/default";
 export * from "./services/connection.service";
 export * from "./services/message.service";
 
-// Export models
-export * from "./models/connection.model";
-export * from "./models/message.model";
-
 // Export utilities
 export * from "./utils/lambda";
 export * from "./utils/fastify";

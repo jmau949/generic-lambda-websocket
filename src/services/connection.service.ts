@@ -1,12 +1,17 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  PutCommand,
-  GetCommand,
-  DeleteCommand,
-} from "@aws-sdk/lib-dynamodb";
-import { Connection } from "../models/connection.model";
-import { config } from "../config/config";
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { config } from '../config/config';
+
+
+export interface Connection {
+  connectionId: string;
+  timestamp: number;
+  domainName?: string;
+  stage?: string;
+  userId?: string;
+  ttl?: number;
+}
+
 
 // Create DynamoDB clients
 const client = new DynamoDBClient({ region: config.region });
@@ -29,10 +34,11 @@ export const saveConnection = async (connection: Connection): Promise<void> => {
   };
 
   try {
+    console.log("HERERERE")
     await docClient.send(new PutCommand(params));
     console.log(`Connection ${connection.connectionId} saved`);
   } catch (error) {
-    console.error("Error saving connection:", error);
+    console.error('Error saving connection:', error);
     throw error;
   }
 };
@@ -40,9 +46,7 @@ export const saveConnection = async (connection: Connection): Promise<void> => {
 /**
  * Get a connection from DynamoDB by connectionId
  */
-export const getConnection = async (
-  connectionId: string
-): Promise<Connection | null> => {
+export const getConnection = async (connectionId: string): Promise<Connection | null> => {
   const params = {
     TableName: config.connectionsTable,
     Key: {
@@ -52,9 +56,9 @@ export const getConnection = async (
 
   try {
     const { Item } = await docClient.send(new GetCommand(params));
-    return (Item as Connection) || null;
+    return Item as Connection || null;
   } catch (error) {
-    console.error("Error getting connection:", error);
+    console.error('Error getting connection:', error);
     throw error;
   }
 };
@@ -74,7 +78,7 @@ export const deleteConnection = async (connectionId: string): Promise<void> => {
     await docClient.send(new DeleteCommand(params));
     console.log(`Connection ${connectionId} deleted`);
   } catch (error) {
-    console.error("Error deleting connection:", error);
+    console.error('Error deleting connection:', error);
     throw error;
   }
 };

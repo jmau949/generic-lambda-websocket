@@ -1,4 +1,3 @@
-import { WebSocketMessage, WebSocketResponse } from "../models/message.model";
 import { getConnection } from "./connection.service";
 import {
   createApiGatewayClient,
@@ -9,6 +8,16 @@ import {
 /**
  * Handle incoming WebSocket message
  */
+export interface WebSocketMessage {
+  action: string;
+  data?: any;
+}
+
+export interface WebSocketResponse {
+  message: string;
+  data?: any;
+}
+
 export const handleMessage = async (
   message: WebSocketMessage,
   connectionId: string,

@@ -1,178 +1,51 @@
 /**
  * Local WebSocket Server for Development
  *
- * This server replicates an AWS API Gateway WebSocket setup for local development.
- * It allows testing WebSocket interactions without deploying to AWS.
- *
- * Key Features:
- * - Uses Fastify to serve an HTTP API.
- * - Implements WebSocket connections for bidirectional communication.
- * - Simulates AWS DynamoDB with an in-memory store.
- * - Calls the same Lambda function handlers as in production.
+ * This server provides a local development environment that mirrors 
+ * the AWS API Gateway WebSocket + Lambda + DynamoDB setup but runs entirely locally.
  */
 
-import fastify, { FastifyInstance } from "fastify";
+import fastify from "fastify";
 import WebSocket, { Server as WebSocketServer } from "ws";
 import { v4 as uuidv4 } from "uuid";
-import path from "path";
-
-// In-memory stores for connections
-const connections = new Map<string, any>();
-const sockets = new Map<string, WebSocket>();
 
 // Create Fastify instance
-const app: FastifyInstance = fastify({
+const app = fastify({
   logger: {
     level: "info",
   },
 });
 
-/**
- * Set up AWS mocks before importing the handlers
- * This prevents the actual AWS SDK calls from being made
- */
+// In-memory connection storage
+const connections = new Map<string, any>();
+const sockets = new Map<string, WebSocket>();
 
-// Mock AWS SDK modules using Node.js module system
-// This approach avoids Jest dependency
-const originalRequire = module.require;
-// @ts-ignore
-module.require = function (id: string) {
-  // Mock DynamoDB Client
-  if (id === "@aws-sdk/client-dynamodb") {
-    return {
-      DynamoDBClient: class MockDynamoDBClient {
-        send() {
-          return Promise.resolve({});
-        }
-      },
-    };
-  }
+// Configure environment before importing any AWS SDK modules
+process.env.AWS_REGION = 'us-east-1';
+process.env.CONNECTIONS_TABLE = 'local-connections-table';
+process.env.LOCAL_DEVELOPMENT = 'true';
 
-  // Mock DynamoDB Document Client
-  if (id === "@aws-sdk/lib-dynamodb") {
-    const PutCommandClass = class PutCommand {
-      input: any;
-      constructor(input: any) {
-        this.input = input;
-      }
-    };
+// Import the WebSocket handlers
+import { handler as connectHandler } from './src/handlers/connect';
+import { handler as disconnectHandler } from './src/handlers/disconnect';
+import { handler as messageHandler } from './src/handlers/message';
+import { handler as defaultHandler } from './src/handlers/default';
 
-    const GetCommandClass = class GetCommand {
-      input: any;
-      constructor(input: any) {
-        this.input = input;
-      }
-    };
-
-    const DeleteCommandClass = class DeleteCommand {
-      input: any;
-      constructor(input: any) {
-        this.input = input;
-      }
-    };
-
-    return {
-      DynamoDBDocumentClient: {
-        from: () => ({
-          send: async (command: any) => {
-            if (command instanceof PutCommandClass) {
-              const item = command.input.Item;
-              connections.set(item.connectionId, item);
-              return {};
-            } else if (command instanceof GetCommandClass) {
-              const connectionId = command.input.Key.connectionId;
-              return { Item: connections.get(connectionId) || null };
-            } else if (command instanceof DeleteCommandClass) {
-              const connectionId = command.input.Key.connectionId;
-              connections.delete(connectionId);
-              return {};
-            }
-            return {};
-          },
-        }),
-      },
-      PutCommand: PutCommandClass,
-      GetCommand: GetCommandClass,
-      DeleteCommand: DeleteCommandClass,
-    };
-  }
-
-  // Mock ApiGatewayManagementApi Client
-  if (id === "@aws-sdk/client-apigatewaymanagementapi") {
-    return {
-      ApiGatewayManagementApiClient: class MockApiGatewayManagementApiClient {
-        constructor() {}
-
-        async send(command: any) {
-          if (command.input && command.input.ConnectionId) {
-            const connectionId = command.input.ConnectionId;
-            const data = command.input.Data;
-            const socket = sockets.get(connectionId);
-
-            if (socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(data.toString());
-            } else {
-              console.log(`Connection ${connectionId} is gone or closed`);
-              connections.delete(connectionId);
-              sockets.delete(connectionId);
-              throw new Error("GoneException");
-            }
-          }
-          return {};
-        }
-      },
-      PostToConnectionCommand: class PostToConnectionCommand {
-        input: any;
-        constructor(input: any) {
-          this.input = input;
-        }
-      },
-    };
-  }
-
-  // For all other modules, use the original require
-  return originalRequire.apply(this, [id]);
-};
-
-// Set environment variables before importing handlers
-process.env.CONNECTIONS_TABLE = "local-connections-table";
-process.env.AWS_REGION = "us-east-1";
-
-// Now import the handlers (after mocking AWS SDK)
-async function importHandlers() {
-  // Import all handlers from the index file
-  const handlersModule = await import("./src/handlers/index");
-
-  return {
-    connectHandler: handlersModule.connect,
-    disconnectHandler: handlersModule.disconnect,
-    messageHandler: handlersModule.message,
-    defaultHandler: handlersModule.default,
-  };
-}
+// Create WebSocket server
+const wss = new (WebSocket as any).Server({ noServer: true });
 
 /**
- * Creates a mock API Gateway WebSocket event object.
- * This is required because AWS API Gateway WebSockets use a specific event format.
- *
- * @param type - The event type (`$connect`, `$disconnect`, or a custom action).
- * @param connectionId - The unique WebSocket connection ID.
- * @param body - (Optional) The message body.
- * @returns A simulated API Gateway event object.
+ * Creates a mock API Gateway WebSocket event
  */
-function createApiGatewayEvent(
-  type: string,
-  connectionId: string,
-  body?: string
-): any {
+function createApiGatewayEvent(routeKey: string, connectionId: string, body?: string): any {
   return {
     requestContext: {
       connectionId,
-      routeKey: type,
-      domainName: "localhost",
-      stage: "local",
+      routeKey,
+      domainName: 'localhost',
+      stage: 'local',
       identity: {
-        sourceIp: "127.0.0.1",
+        sourceIp: '127.0.0.1',
       },
       requestTimeEpoch: Date.now(),
     },
@@ -181,121 +54,166 @@ function createApiGatewayEvent(
   };
 }
 
+// Override AWS SDK functions with local implementations
+// This needs to be defined after importing the AWS SDK
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
+
+// Create a proxy for DynamoDB client
+const originalDynamoDbClient = DynamoDBClient.prototype.send;
+DynamoDBClient.prototype.send = async function(command) {
+  console.log('Mock DynamoDB command:', command.constructor.name);
+  return {};
+};
+
+// Create proxies for DynamoDB document client operations
+const originalDocClientSend = DynamoDBDocumentClient.prototype.send;
+DynamoDBDocumentClient.prototype.send = async function(command) {
+  console.log('Mock DynamoDB Document command:', command.constructor.name);
+  
+  if (command instanceof PutCommand) {
+    const item = command.input.Item;
+    connections.set(item?.connectionId, item);
+    console.log(`Saved connection: ${item?.connectionId}`);
+    return {};
+  }
+  
+  if (command instanceof GetCommand) {
+    const connectionId = command.input.Key?.connectionId;
+    const connection = connections.get(connectionId);
+    console.log(`Retrieved connection: ${connectionId}`, connection ? 'Found' : 'Not found');
+    return { Item: connection };
+  }
+  
+  if (command instanceof DeleteCommand) {
+    const connectionId = command.input.Key?.connectionId;
+    connections.delete(connectionId);
+    console.log(`Deleted connection: ${connectionId}`);
+    return {};
+  }
+  
+  return {};
+};
+
+// Create a proxy for API Gateway Management API
+const originalApiGatewayClientSend = ApiGatewayManagementApiClient.prototype.send;
+ApiGatewayManagementApiClient.prototype.send = async function(command) {
+  if (command instanceof PostToConnectionCommand) {
+    const connectionId = command.input.ConnectionId;
+    const data = command.input.Data;
+    const socket = sockets.get(connectionId as any);
+    
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      console.log(`Sending message to connection: ${connectionId}`);
+      //@ts-ignore
+      socket.send(Buffer.isBuffer(data) ? data.toString() : data);
+    } else {
+      console.log(`Connection not found or closed: ${connectionId}`);
+      throw { name: 'GoneException' };
+    }
+  }
+  
+  return {};
+};
+
+// Handle WebSocket connections
+wss.on('connection', async (ws: WebSocket, connectionId: string) => {
+  console.log(`New WebSocket connection: ${connectionId}`);
+  
+  // Store WebSocket instance
+  sockets.set(connectionId, ws);
+  
+  try {
+    // Handle $connect event
+    const connectEvent = createApiGatewayEvent('$connect', connectionId);
+    await connectHandler(connectEvent);
+    
+    // Handle incoming messages
+    ws.addEventListener('message', async (event) => {
+      try {
+        const messageData = event.data as string;
+        console.log(`Received message from ${connectionId}:`, messageData);
+        
+        // Parse the message
+        let parsedMessage;
+        try {
+          parsedMessage = JSON.parse(messageData);
+        } catch (error) {
+          parsedMessage = { action: '$default' };
+        }
+        
+        // Create the API Gateway event
+        const messageEvent = createApiGatewayEvent(
+          parsedMessage.action || '$default',
+          connectionId,
+          messageData
+        );
+        
+        // Route to the appropriate handler
+        if (parsedMessage.action === 'message') {
+          await messageHandler(messageEvent);
+        } else {
+          await defaultHandler(messageEvent);
+        }
+      } catch (error) {
+        console.error('Error processing message:', error);
+        ws.send(JSON.stringify({
+          error: 'Error processing message',
+          message: 'Failed to process your request'
+        }));
+      }
+    });
+    
+    // Handle disconnection
+    ws.addEventListener('close', async () => {
+      console.log(`Connection closed: ${connectionId}`);
+      
+      // Call disconnect handler
+      const disconnectEvent = createApiGatewayEvent('$disconnect', connectionId);
+      await disconnectHandler(disconnectEvent);
+      
+      // Clean up
+      sockets.delete(connectionId);
+    });
+    
+    // Send welcome message
+    ws.send(JSON.stringify({
+      message: 'Connected to WebSocket server',
+      connectionId
+    }));
+  } catch (error) {
+    console.error('Error handling connection:', error);
+    ws.close();
+  }
+});
+
+// HTTP routes
+app.get('/', (request, reply) => {
+  reply.send({
+    message: 'WebSocket server is running',
+    activeConnections: connections.size
+  });
+});
+
 // Start the server
 const start = async () => {
   try {
-    // Import the handlers
-    const handlers = await importHandlers();
-
-    // Create WebSocket server
-    const wss = new WebSocketServer({ noServer: true });
-
-    // Handle WebSocket connections
-    wss.on("connection", async (ws: WebSocket, connectionId: string) => {
-      console.log(`New WebSocket connection: ${connectionId}`);
-
-      // Store WebSocket instance
-      sockets.set(connectionId, ws);
-
-      try {
-        // Simulate an AWS API Gateway `$connect` event
-        const connectEvent = createApiGatewayEvent("$connect", connectionId);
-
-        // Call the actual WebSocket connect handler
-        await handlers.connectHandler(connectEvent);
-
-        // Handle incoming WebSocket messages
-        ws.on("message", async (data: WebSocket.Data) => {
-          try {
-            const messageData = data.toString();
-            console.log(`Received message from ${connectionId}:`, messageData);
-
-            // Parse message as JSON (fallback to `$default` action if parsing fails)
-            let parsedMessage;
-            try {
-              parsedMessage = JSON.parse(messageData);
-            } catch (error) {
-              parsedMessage = { action: "$default" };
-            }
-
-            // Convert to API Gateway event format
-            const messageEvent = createApiGatewayEvent(
-              parsedMessage.action || "$default",
-              connectionId,
-              messageData
-            );
-
-            // Route message to appropriate handler
-            if (parsedMessage.action === "message") {
-              await handlers.messageHandler(messageEvent);
-            } else {
-              await handlers.defaultHandler(messageEvent);
-            }
-          } catch (error) {
-            console.error("Error processing message:", error);
-            ws.send(
-              JSON.stringify({
-                error: "Failed to process message",
-                message: "Invalid request",
-              })
-            );
-          }
-        });
-
-        // Handle WebSocket disconnection
-        ws.on("close", async () => {
-          console.log(`Connection closed: ${connectionId}`);
-
-          // Simulate AWS API Gateway `$disconnect` event
-          const disconnectEvent = createApiGatewayEvent(
-            "$disconnect",
-            connectionId
-          );
-
-          // Call the actual WebSocket disconnect handler
-          await handlers.disconnectHandler(disconnectEvent);
-
-          // Cleanup connection
-          sockets.delete(connectionId);
-        });
-
-        // Send a welcome message to the connected client
-        ws.send(
-          JSON.stringify({
-            message: "Connected to WebSocket server",
-            connectionId,
-          })
-        );
-      } catch (error) {
-        console.error("Error handling WebSocket connection:", error);
-        ws.close();
-      }
-    });
-
-    // HTTP route for health check
-    app.get("/", (request, reply) => {
-      reply.send({
-        message: "WebSocket server is running",
-        activeConnections: connections.size,
-      });
-    });
-
-    // Start HTTP server
-    const server = await app.listen({ port: 3000, host: "0.0.0.0" });
+    const server = await app.listen({ port: 3000, host: '0.0.0.0' });
     console.log(`Server is running at ${server}`);
-
+    
     // Handle WebSocket upgrade
-    app.server?.on("upgrade", (request, socket, head) => {
+    app.server?.on('upgrade', (request, socket, head) => {
       const connectionId = uuidv4();
-
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, connectionId);
+      
+      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+        wss.emit('connection', ws, connectionId);
       });
     });
-
+    
     console.log(`WebSocket server is running at ws://localhost:3000`);
-    console.log(`Using application code from src/ directory`);
-    console.log(`Data is stored in-memory (simulating DynamoDB)`);
+    console.log(`Using actual handlers from src/ directory`);
+    console.log(`DynamoDB operations redirected to in-memory storage`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
