@@ -139,18 +139,15 @@ process.env.CONNECTIONS_TABLE = "local-connections-table";
 process.env.AWS_REGION = "us-east-1";
 
 // Now import the handlers (after mocking AWS SDK)
-// We need to use dynamic imports to ensure the mocks are applied first
 async function importHandlers() {
-  const connectHandlerModule = await import("./src/handlers/connect");
-  const disconnectHandlerModule = await import("./src/handlers/disconnect");
-  const messageHandlerModule = await import("./src/handlers/message");
-  const defaultHandlerModule = await import("./src/handlers/default");
+  // Import all handlers from the index file
+  const handlersModule = await import("./src/handlers/index");
 
   return {
-    connectHandler: connectHandlerModule.handler,
-    disconnectHandler: disconnectHandlerModule.handler,
-    messageHandler: messageHandlerModule.handler,
-    defaultHandler: defaultHandlerModule.handler,
+    connectHandler: handlersModule.connect,
+    disconnectHandler: handlersModule.disconnect,
+    messageHandler: handlersModule.message,
+    defaultHandler: handlersModule.default,
   };
 }
 

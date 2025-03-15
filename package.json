@@ -2,7 +2,7 @@
   "name": "fastify-websocket-api",
   "version": "1.0.0",
   "description": "Fastify AWS API Gateway WebSocket server",
-  "main": "dist/handlers/index.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "sam local start-api",

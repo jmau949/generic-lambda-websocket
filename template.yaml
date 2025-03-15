@@ -125,7 +125,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/
-      Handler: handlers/connect.handler
+      Handler: handlers/index.connect
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -134,7 +134,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/
-      Handler: handlers/disconnect.handler
+      Handler: handlers/index.disconnect
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -143,7 +143,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/
-      Handler: handlers/message.handler
+      Handler: handlers/index.message
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -158,7 +158,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/
-      Handler: handlers/default.handler
+      Handler: handlers/index.default
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
