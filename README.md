@@ -1,97 +1,104 @@
-# LLM WebSocket API
+# Fastify WebSocket API for AWS API Gateway
 
-A WebSocket API built with AWS API Gateway, Lambda, DynamoDB, and Fastify to stream LLM results to users.
-
-## Architecture
-
-This application uses:
-- **AWS API Gateway (WebSocket)**: Manages WebSocket connections
-- **AWS Lambda**: Process connection events and messages
-- **Amazon DynamoDB**: Store WebSocket connection IDs
-- **Fastify**: Fast, low-overhead web framework
-- **AWS SAM**: For local development and deployment
+A TypeScript implementation of a WebSocket server using Fastify, AWS API Gateway, Lambda, and DynamoDB for managing connections and streaming LLM responses.
 
 ## Project Structure
 
 ```
-llm-websocket-api/
+fastify-websocket-api/
 ├── src/
-│   ├── handlers/       # Lambda handlers
-│   ├── services/       # Business logic
-│   ├── repositories/   # Data access
-│   ├── utils/          # Helper functions
-│   ├── config/         # Configuration
-│   └── app.js          # Application setup
-├── tests/              # Tests
-└── template.yaml       # SAM template
+│   ├── handlers/       # Lambda handlers for WebSocket events
+│   ├── services/       # Business logic services
+│   ├── utils/          # Utility functions
+│   ├── models/         # Data models
+│   └── config/         # Configuration
+├── tests/              # Test files
+├── local-server.ts     # Standalone local WebSocket server
+├── test-client.html    # Browser-based test client
+└── template.yaml       # SAM template for AWS deployment
 ```
 
 ## Getting Started
 
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (v14 or later)
-- [AWS CLI](https://aws.amazon.com/cli/)
-- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-- [Docker](https://www.docker.com/) (for local testing)
-
 ### Installation
 
-1. Clone this repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
+```bash
+# Install dependencies
+npm install
+```
 
-### Local Development
+### Development Options
 
-1. Start the local API:
-   ```
-   npm run start:local
-   ```
-   This will start API Gateway locally on port 3000.
+#### Option 1: Run the Local WebSocket Server (Recommended for Development)
 
-2. Connect to the WebSocket using a client:
-   ```
-   wss://localhost:3000/dev
-   ```
+This standalone server runs independently from AWS resources and is ideal for rapid development:
 
-### Deployment
+```bash
+# Start the local WebSocket server
+npm run local
+```
 
-1. Build the application:
-   ```
-   npm run build
-   ```
+The WebSocket server will be available at `ws://localhost:3000`
 
-2. Deploy to AWS (first time):
-   ```
-   npm run deploy
-   ```
-   This will guide you through the deployment process.
+#### Option 2: Run with SAM Local (For AWS Integration Testing)
 
-3. For subsequent deployments:
-   ```
-   npm run deploy:ci
-   ```
+If you need to test with the full AWS infrastructure locally:
 
-## WebSocket API
+```bash
+# Build the TypeScript project
+npm run build
 
-### Connection
+# Start the SAM local API
+npm run start
+```
 
-Connect to the WebSocket endpoint.
+### Testing
 
-### Routes
+1. Open `test-client.html` in your browser
+2. Connect to the appropriate WebSocket endpoint:
+   - Local server: `ws://localhost:3000`
+   - SAM local: Check the terminal output for the WebSocket URL
+3. Send test messages to verify functionality
 
-- `message`: Send a message to get LLM processing
-  ```json
-  {
-    "action": "message",
-    "data": {
-      "prompt": "Your message here"
-    }
-  }
-  ```
+## Deployment to AWS
+
+1. Update `samconfig.toml` with your AWS settings
+
+2. Deploy to AWS:
+```bash
+npm run deploy
+```
+
+3. After deployment, note the WebSocket URL from the CloudFormation outputs
+
+## Implementing LLM Streaming
+
+To implement LLM streaming, you'll need to modify the following:
+
+1. Update `message.service.ts` to:
+   - Process user input
+   - Call your LLM service
+   - Stream results back through the WebSocket
+
+2. Consider adding authentication to secure your endpoints.
+
+## Troubleshooting
+
+### Common Issues with SAM Local
+
+The SAM CLI sometimes has difficulty properly emulating WebSocket APIs locally. If you encounter issues:
+
+1. Use the standalone local server (`npm run local`) for development
+2. Ensure your template.yaml has the proper WebSocket configuration
+3. Check AWS SAM CLI version compatibility
+
+### Connection Issues
+
+If clients cannot connect:
+- Verify CORS settings if connecting from a browser
+- Check network/firewall settings
+- Verify the WebSocket URL format (ws:// for local, wss:// for deployed)
 
 ## License
 
-MIT
+ISC
