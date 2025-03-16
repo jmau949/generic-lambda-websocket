@@ -4,49 +4,33 @@ import {
 } from "aws-lambda";
 import { extractConnectionInfo, createResponse } from "../utils/lambda";
 import { saveConnection } from "../services/connection.service";
-import { authenticateConnection } from "../services/auth.service";
 
 /**
  * Handle WebSocket $connect event
  *
- * Authentication is always required. For WebSocket connections, the token must
- * be provided as a query parameter since cookies and headers are not reliably
- * available in WebSocket API Gateway events.
+ * Authentication is handled by the API Gateway Cognito authorizer,
+ * which validates the JWT cookie before this Lambda is invoked.
+ * If the request reaches this handler, it's already authenticated.
  */
 export const handler = async (
   event: APIGatewayProxyWebsocketEventV2
 ): Promise<APIGatewayProxyResult> => {
   try {
-    console.log("Connect event:", JSON.stringify(event, null, 2));
+    console.log("Connect event:", JSON.stringify(event));
 
-    // Extract connection information from the event, including query parameters
-    const { connectionId, domainName, stage, queryParams } =
-      extractConnectionInfo(event);
+    // Extract connection information from the event
+    const { connectionId, domainName, stage } = extractConnectionInfo(event);
 
-    console.log("Extracted connection info:", {
-      connectionId,
-      domainName,
-      stage,
-      queryParams,
-    });
+    // Extract user details from the authorizer context (added by Cognito authorizer)
+    const authorizer = (event.requestContext as any).authorizer || {};
 
-    // Authenticate the connection
-    const authResult = await authenticateConnection(event);
+    const claims = authorizer.jwt?.claims || {};
 
-    if (!authResult.authenticated) {
-      // Log the authentication failure
-      console.log("Authentication failed:", authResult.error);
+    // Get user identity from claims
+    const userId = claims.sub || claims["cognito:username"] || "";
+    const userEmail = claims.email || "";
 
-      // Important: For WebSocket connections, returning a non-200 response
-      // will close the connection. This is the correct behavior for auth failures.
-      return createResponse(401, {
-        message: "Unauthorized",
-        error: authResult.error || "Authentication required",
-      });
-    }
-
-    // Authentication successful
-    console.log("Authenticated user:", authResult.user);
+    console.log("Authenticated user:", { userId, userEmail });
 
     // Save the connection to DynamoDB with user info
     await saveConnection({
@@ -55,12 +39,12 @@ export const handler = async (
       domainName,
       stage,
       timestamp: Date.now(),
-      userId: authResult.user.sub || authResult.user.username,
-      userEmail: authResult.user.email,
+      userId,
+      userEmail,
       isAuthenticated: true,
     });
 
-    // Return a successful response to allow the connection
+    // Return a successful response
     return createResponse(200, { message: "Connected" });
   } catch (error) {
     console.error("Error handling connect event:", error);

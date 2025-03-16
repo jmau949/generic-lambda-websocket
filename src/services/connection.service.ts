@@ -36,11 +36,10 @@ export const saveConnection = async (connection: Connection): Promise<void> => {
   };
 
   try {
-    console.log("HERERERE")
     await docClient.send(new PutCommand(params));
     console.log(`Connection ${connection.connectionId} saved`);
   } catch (error) {
-    console.error('Error saving connection:', error);
+    console.error("Error saving connection:", error);
     throw error;
   }
 };

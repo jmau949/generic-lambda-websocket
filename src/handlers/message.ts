@@ -20,7 +20,6 @@ export const handler = async (
 
     // Extract connection information from the event
     const { connectionId, domainName, stage } = extractConnectionInfo(event);
-
     // Parse the WebSocket message
     const message = parseWebSocketEvent(event);
 

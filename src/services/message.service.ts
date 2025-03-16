@@ -4,10 +4,6 @@ import {
   sendMessageToClient,
   getWebSocketEndpoint,
 } from "../utils/websocket";
-
-/**
- * Handle incoming WebSocket message
- */
 export interface WebSocketMessage {
   action: string;
   data?: any;
@@ -17,7 +13,9 @@ export interface WebSocketResponse {
   message: string;
   data?: any;
 }
-
+/**
+ * Handle incoming WebSocket message
+ */
 export const handleMessage = async (
   message: WebSocketMessage,
   connectionId: string,
@@ -32,16 +30,42 @@ export const handleMessage = async (
       throw new Error(`Connection ${connectionId} not found`);
     }
 
-    // Process the message (in a real implementation, this would trigger LLM processing)
-    // For now, just echo back "Hello World"
-    const response: WebSocketResponse = {
-      message: "Hello World",
-    };
+    // Process the message based on action type
+    let response: WebSocketResponse;
+
+    if (message.action === "message") {
+      // Handle chat messages
+      response = {
+        message: "Message received",
+        data: {
+          message: message.data?.message || "No message content",
+          sender: message.data?.sender || "Anonymous",
+          timestamp: Date.now(),
+        },
+      };
+    } else {
+      // Default response for other actions
+      response = {
+        message: "Unknown action",
+        data: {
+          message: "Hello from WebSocket Server",
+          sender: "System",
+          timestamp: Date.now(),
+        },
+      };
+    }
 
     // Send response back to the client
     const endpoint = getWebSocketEndpoint(domainName, stage);
     const apiGatewayClient = createApiGatewayClient(endpoint);
     await sendMessageToClient(apiGatewayClient, connectionId, response);
+
+    // Broadcast message to all connected clients (for chat functionality)
+    if (message.action === "message") {
+      // In a real implementation, you would query DynamoDB for all active connections
+      // and send the message to each one. For local development, this is simplified.
+      console.log("Broadcasting message to other clients would happen here");
+    }
 
     return response;
   } catch (error) {

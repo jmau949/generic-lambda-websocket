@@ -34,6 +34,19 @@ Resources:
       # Explicitly set this as WebSocket API to avoid SAM local parsing issues
       ApiKeySelectionExpression: "$request.header.x-api-key"
 
+  WebSocketAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      Name: CognitoAuthorizer
+      ApiId: !Ref WebSocketApi
+      AuthorizerType: JWT
+      IdentitySource: 
+        - 'route.request.header.Cookie'
+      JwtConfiguration:
+        Audience:
+          - !Ref CognitoClientId
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
+
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -51,7 +64,8 @@ Resources:
     Properties:
       ApiId: !Ref WebSocketApi
       RouteKey: $connect
-      AuthorizationType: NONE
+      AuthorizationType: JWT
+      AuthorizerId: !Ref WebSocketAuthorizer
       RouteResponseSelectionExpression: $default
       OperationName: ConnectRoute
       Target: !Join

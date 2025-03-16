@@ -117,7 +117,7 @@
      * Helper function to extract token from browser cookies
      * (Only for convenience in transferring the token from cookies to query param)
      */
-    function getTokenFromCookies(cookieName = 'auth') {
+    function getTokenFromCookies(cookieName = 'authToken') {
       const cookies = document.cookie.split(';');
       for (let cookie of cookies) {
         const [name, value] = cookie.trim().split('=');
