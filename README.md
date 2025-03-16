@@ -1,6 +1,4 @@
-Here's your comprehensive README as a single code block with all formatting properly escaped:
 
-````
 # AWS WebSocket Lambda API with Cognito Auth
 
 A template repository for building real-time applications using AWS API Gateway WebSockets with Lambda integration and Cognito authentication.
@@ -285,4 +283,3 @@ Enable execution logging in the API Gateway console for additional debugging.
 ## License
 
 MIT
-````
