@@ -2,18 +2,16 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Fastify WebSocket API with API Gateway, Lambda and DynamoDB
 
-Globals:
-  Function:
-    Timeout: 30
-    Runtime: nodejs18.x
-    Handler: index.handler
-    Environment:
-      Variables:
-        CONNECTIONS_TABLE: !Ref ConnectionsTable
-        COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
-        COGNITO_CLIENT_ID: !Ref CognitoClientId
-
 Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Description: Environment type
+  
   CognitoUserPoolId:
     Type: String
     Description: Cognito User Pool ID
@@ -23,17 +21,67 @@ Parameters:
     Type: String
     Description: Cognito Client ID
     Default: ''
+  
+  DomainName:
+    Type: String
+    Default: ws.jonathanmau.com
+    Description: Custom domain name for WebSocket API
+  
+  HostedZoneId:
+    Type: String
+    Description: Route 53 Hosted Zone ID for jonathanmau.com domain
+    
+  SentryDsn:
+    Type: String
+    Default: ''
+    Description: Sentry DSN
+    
+  SentryLambdaLayerArn:
+    Type: String
+    Default: ''
+    Description: Sentry Lambda Layer ARN
+    
+  WebSocketApiGatewayName:
+    Type: String
+    Default: 'jonathanmau-websocket-api'
+    Description: Name for the WebSocket API Gateway (should remain consistent across deployments)
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs18.x
+    Handler: index.handler
+    Environment:
+      Variables:
+        NODE_ENV: !Ref Environment
+        CONNECTIONS_TABLE: !Ref ConnectionsTable
+        COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+        COGNITO_CLIENT_ID: !Ref CognitoClientId
+        SENTRY_DSN: !Ref SentryDsn
 
 Resources:
+  # Create a new ACM Certificate for the subdomain
+  WsApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  # WebSocket API
   WebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: FastifyWebSocketApi
+      Name: !Ref WebSocketApiGatewayName
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
-      # Explicitly set this as WebSocket API to avoid SAM local parsing issues
       ApiKeySelectionExpression: "$request.header.x-api-key"
 
+  # Authorizer
   WebSocketAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
     Properties:
@@ -47,10 +95,13 @@ Resources:
           - !Ref CognitoClientId
         Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
 
+  # DynamoDB Table for connections
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      TableName: ConnectionsTable
+      TableName: WebSocketConnectionsTable
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: connectionId
@@ -59,6 +110,7 @@ Resources:
         - AttributeName: connectionId
           KeyType: HASH
 
+  # Routes and Integrations
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
@@ -148,11 +200,14 @@ Resources:
         Fn::Sub:
           arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DefaultFunction.Arn}/invocations
 
+  # Lambda Functions
   ConnectFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/
       Handler: handlers/index.connect
+      Layers:
+        - !Ref SentryLambdaLayerArn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -162,6 +217,8 @@ Resources:
     Properties:
       CodeUri: dist/
       Handler: handlers/index.disconnect
+      Layers:
+        - !Ref SentryLambdaLayerArn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -171,6 +228,8 @@ Resources:
     Properties:
       CodeUri: dist/
       Handler: handlers/index.message
+      Layers:
+        - !Ref SentryLambdaLayerArn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -186,6 +245,8 @@ Resources:
     Properties:
       CodeUri: dist/
       Handler: handlers/index.default
+      Layers:
+        - !Ref SentryLambdaLayerArn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
@@ -196,6 +257,40 @@ Resources:
               Resource:
                 - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
 
+  # Lambda Log Groups with 30-day retention
+  ConnectFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ConnectFunction}"
+      RetentionInDays: 30
+
+  DisconnectFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${DisconnectFunction}"
+      RetentionInDays: 30
+
+  MessageFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${MessageFunction}"
+      RetentionInDays: 30
+
+  DefaultFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${DefaultFunction}"
+      RetentionInDays: 30
+
+  # WebSocket API Deployment and Stage
   Deployment:
     Type: AWS::ApiGatewayV2::Deployment
     DependsOn:
@@ -211,17 +306,75 @@ Resources:
     Properties:
       ApiId: !Ref WebSocketApi
       DeploymentId: !Ref Deployment
-      StageName: dev
+      StageName: Prod
+
+  # Domain Configuration for WebSocket API
+  WebSocketApiDomainName:
+    Type: AWS::ApiGatewayV2::DomainName
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: !Ref DomainName
+      DomainNameConfigurations:
+        - CertificateArn: !Ref WsApiCertificate
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
+
+  WebSocketApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    DependsOn:
+      - Stage
+      - WebSocketApiDomainName
+    Properties:
+      ApiId: !Ref WebSocketApi
+      DomainName: !Ref DomainName
+      Stage: Prod
+
+  # DNS Record for WebSocket Subdomain
+  WsDnsRecord:
+    Type: AWS::Route53::RecordSet
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    DependsOn: WebSocketApiDomainName
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebSocketApiDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt WebSocketApiDomainName.RegionalHostedZoneId
 
 Outputs:
   WebSocketApiId:
     Description: "API Gateway WebSocket API ID"
     Value: !Ref WebSocketApi
+    Export:
+      Name: WebSocketApiId
 
-  WebSocketURL:
+  WebSocketDefaultURL:
     Description: "API Gateway WebSocket URL"
-    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+  WebSocketCustomDomainURL:
+    Description: "Custom domain WebSocket URL"
+    Value: !Sub "wss://${DomainName}"
+    Export:
+      Name: WebSocketCustomDomainURL
 
   ConnectionsTableArn:
     Description: "DynamoDB Connections Table ARN"
     Value: !GetAtt ConnectionsTable.Arn
+    Export:
+      Name: WebSocketConnectionsTableArn
+
+  WsApiCertificateArn:
+    Description: "ARN of the WebSocket API Certificate"
+    Value: !Ref WsApiCertificate
+    Export:
+      Name: WebSocketApiCertificateArn
+      
+  WebSocketApiDomainNameOutput:
+    Description: "Domain name for the WebSocket API Gateway"
+    Value: !GetAtt WebSocketApiDomainName.RegionalDomainName
+    Export:
+      Name: WebSocketApiDomainName

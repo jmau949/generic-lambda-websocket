@@ -1,5 +1,5 @@
 /**
- * Main entry point for the Fastify WebSocket API
+ * Main entry point for the WebSocket API
  * Exports all Lambda handlers for AWS API Gateway WebSocket integration
  */
 

@@ -1,6 +1,6 @@
-# Fastify WebSocket API for AWS API Gateway
+# Lambda WebSocket API for AWS API Gateway
 
-A TypeScript implementation of a WebSocket server using Fastify, AWS API Gateway, Lambda, and DynamoDB for managing connections and streaming LLM responses.
+A TypeScript implementation of a WebSocket server using AWS API Gateway, Lambda, and DynamoDB for managing connections and streaming LLM responses.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ This project implements a serverless WebSocket API using the following AWS servi
 ## Project Structure
 
 ```
-fastify-websocket-api/
+generic-lambda-websocket/
 ├── src/
 │   ├── handlers/         # Lambda handlers for WebSocket events
 │   │   ├── connect.ts    # Handles $connect event
