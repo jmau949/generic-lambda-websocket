@@ -1,232 +1,288 @@
-# Lambda WebSocket API for AWS API Gateway
+Here's your comprehensive README as a single code block with all formatting properly escaped:
 
-A TypeScript implementation of a WebSocket server using AWS API Gateway, Lambda, and DynamoDB for managing connections and streaming LLM responses.
+````
+# AWS WebSocket Lambda API with Cognito Auth
 
-## Architecture
+A template repository for building real-time applications using AWS API Gateway WebSockets with Lambda integration and Cognito authentication.
 
-This project implements a serverless WebSocket API using the following AWS services:
+## Architecture Overview
 
-1. **API Gateway WebSocket API**: Manages WebSocket connections with clients
-2. **Lambda Functions**: Process WebSocket events and business logic
-3. **DynamoDB**: Stores active connection information
+This template implements a secure WebSocket API using:
 
-![Architecture Diagram](https://via.placeholder.com/800x400?text=WebSocket+API+Architecture)
+- **API Gateway WebSocket API**: Handles WebSocket connections
+- **Cognito Authentication**: Validates JWT tokens via cookies
+- **Lambda Functions**: Process WebSocket events
+- **DynamoDB**: Stores active connections
+
+### API Gateway WebSocket Flow
+
+The request flow follows these steps:
+
+1. **Connection Request**: Client initiates WebSocket connection with cookies
+2. **Authorization**: API Gateway validates JWT token via Cognito authorizer
+3. **Connection Establishment**: If authorized, $connect Lambda stores connection in DynamoDB
+4. **Message Processing**: Subsequent messages are routed to appropriate Lambda handlers
+5. **Response**: Lambda functions can send responses via the Management API
+6. **Disconnection**: On disconnect, $disconnect Lambda cleans up connection data
 
 ## Project Structure
 
 ```
-generic-lambda-websocket/
+fastify-websocket-api/
 ├── src/
-│   ├── handlers/         # Lambda handlers for WebSocket events
-│   │   ├── connect.ts    # Handles $connect event
-│   │   ├── disconnect.ts # Handles $disconnect event
-│   │   ├── message.ts    # Handles message events
-│   │   ├── default.ts    # Handles unknown events
-│   │   └── index.ts      # Exports all handlers
-│   ├── services/         # Business logic services
-│   │   ├── connection.service.ts # Connection management
-│   │   └── message.service.ts    # Message processing
-│   ├── utils/            # Utility functions
-│   │   ├── lambda.ts     # Lambda helper functions
-│   │   ├── fastify.ts    # Fastify configuration
-│   │   └── websocket.ts  # WebSocket utilities
-│   ├── models/           # Data models
-│   │   ├── connection.model.ts # Connection data structure
-│   │   └── message.model.ts    # Message data structure
-│   ├── config/           # Configuration
-│   │   └── config.ts     # Application configuration
-│   └── index.ts          # Main entry point
-├── tests/                # Test files
-├── local-server.ts       # Standalone local WebSocket server
-├── test-client.html      # Browser-based test client
-├── template.yaml         # SAM template for AWS deployment
-└── tsconfig.json         # TypeScript configuration
+│   ├── handlers/      # Lambda handlers for WebSocket events
+│   │   ├── connect.ts     # Handles new connections
+│   │   ├── disconnect.ts  # Handles client disconnections
+│   │   ├── message.ts     # Processes incoming messages
+│   │   ├── default.ts     # Handles unrecognized message formats
+│   │   └── index.ts       # Exports all handlers
+│   ├── services/      # Business logic services
+│   │   ├── auth.service.ts       # JWT validation with JWKS caching
+│   │   ├── connection.service.ts # DynamoDB connection storage
+│   │   └── message.service.ts    # Message processing logic
+│   ├── models/        # Data models
+│   │   ├── connection.model.ts   # Connection entity model
+│   │   └── message.model.ts      # Message format definitions
+│   ├── utils/         # Utility functions
+│   │   ├── lambda.ts        # Lambda event helpers
+│   │   └── websocket.ts     # WebSocket communication utilities
+│   ├── config/        # Configuration
+│   │   └── config.ts        # Environment & app configuration
+│   └── index.ts       # Main entry point
+├── local-server.ts    # Local development server
+├── tests/             # Test files
+├── template.yaml      # SAM template for AWS deployment
+└── tsconfig.json      # TypeScript configuration
 ```
-
-## Flow Explanation
-
-### 1. Connection Lifecycle
-
-1. **Connection Establishment**:
-   - Client initiates a WebSocket connection to API Gateway
-   - API Gateway triggers the `$connect` Lambda function
-   - `connect.ts` handler validates the connection and stores connection details in DynamoDB
-   - Connection ID is returned to the client
-
-2. **Message Exchange**:
-   - Client sends a message with an `action` field
-   - API Gateway routes the message based on the action
-   - Corresponding Lambda function processes the message
-   - For `message` action: `message.ts` handler processes the request
-   - For unknown actions: `default.ts` handler is invoked
-   - Responses are sent back through API Gateway to the client
-
-3. **Disconnection**:
-   - Client closes the connection
-   - API Gateway triggers the `$disconnect` Lambda function
-   - `disconnect.ts` handler removes the connection from DynamoDB
-
-### 2. LLM Integration (To Be Implemented)
-
-When receiving a message, the flow will be:
-1. Client sends message with user input
-2. Message handler processes the request
-3. LLM service is called to generate a response
-4. Response is streamed back to the client through the WebSocket connection
-
-### 3. Data Flow
-
-```
-Client <--> API Gateway <--> Lambda <--> DynamoDB
-                                 |
-                                 v
-                            LLM Service
-```
-
-## AWS Resources Created
-
-The `template.yaml` file defines the following AWS resources:
-
-1. **API Gateway WebSocket API**: `WebSocketApi`
-   - Manages WebSocket connections and routes
-   - Routes: `$connect`, `$disconnect`, `message`, `$default`
-
-2. **Lambda Functions**:
-   - `ConnectFunction`: Handles new connections
-   - `DisconnectFunction`: Handles disconnections
-   - `MessageFunction`: Processes messages
-   - `DefaultFunction`: Handles unknown message types
-
-3. **DynamoDB Table**: `ConnectionsTable`
-   - Stores connection information with TTL
-   - Schema: `connectionId` (primary key), `timestamp`, `ttl`
-
-4. **IAM Permissions**:
-   - DynamoDB access for all functions
-   - API Gateway Management API access for message/default functions
 
 ## Getting Started
+
+### Prerequisites
+
+1. AWS Account with appropriate permissions
+2. AWS SAM CLI installed
+3. Node.js 14+ and npm
+4. A Cognito User Pool for authentication
 
 ### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/yourusername/fastify-websocket-api.git
+cd fastify-websocket-api
+
 # Install dependencies
 npm install
 ```
 
-### Local Development
+### Configuration
 
-#### Run the Local WebSocket Server
+1. Update Cognito settings in `src/config/config.ts`:
 
-This server runs locally and simulates the AWS infrastructure:
+```typescript
+export const config = {
+  // DynamoDB
+  connectionsTable: process.env.CONNECTIONS_TABLE || 'ConnectionsTable',
+  
+  // Connection TTL in seconds (default: 2 hours)
+  connectionTtl: 7200,
+  
+  // AWS region
+  region: process.env.AWS_REGION || 'us-east-1',
+
+  // Authentication
+  auth: {
+    jwksCacheTTL: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+  },
+
+  // Cognito configuration
+  cognito: {
+    userPoolId: process.env.COGNITO_USER_POOL_ID || '',
+    clientId: process.env.COGNITO_CLIENT_ID || '',
+  }
+};
+```
+
+2. Update `template.yaml` with your Cognito User Pool details:
+
+```yaml
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID
+    Default: ''
+  
+  CognitoClientId:
+    Type: String
+    Description: Cognito Client ID
+    Default: ''
+```
+
+## Local Development
+
+For local development, the project includes a WebSocket server that simulates API Gateway with Cognito authentication.
+
+### Starting the Local Server
 
 ```bash
-# Start the local WebSocket server
+# First, update Cognito settings in local-server.ts
+# Then run:
 npm run local
 ```
 
-The WebSocket server will be available at `ws://localhost:3000`
+The server will start at `ws://localhost:3000` and will:
+- Extract JWT tokens from HTTP cookies (from the Cookie header)
+- Validate tokens against your Cognito User Pool
+- Process WebSocket events using your Lambda handlers
+- Store connections in memory instead of DynamoDB
 
-Key features of the local server:
-- Uses the same handlers as the AWS deployment
-- Simulates DynamoDB with in-memory storage
-- Provides the same API Gateway event format
-- No AWS resources required for development
+### Authentication
 
-#### Local Testing
+For local development:
+- You need a valid JWT token in an HTTP-only cookie named `auth` or `id_token`
+- The cookie must be set before connecting to the WebSocket
+- The server validates this token against the same Cognito User Pool as production
 
-1. Open `test-client.html` in your browser
-2. Connect to `ws://localhost:3000`
-3. Send test messages to verify functionality
+### Testing with the Sample Client
 
-### AWS Deployment
+A sample React chat application is included to test the WebSocket connection:
 
-1. Update `samconfig.toml` with your AWS settings
-
-2. Build the project:
 ```bash
+# In a separate terminal
+cd client
+npm install
+npm start
+```
+
+## Deployment to AWS
+
+### Build
+
+```bash
+# Compile TypeScript to JavaScript
 npm run build
 ```
 
-3. Deploy to AWS:
+### Deploy with SAM
+
 ```bash
-npm run deploy
+# Deploy to AWS
+sam deploy --guided
 ```
 
-4. After deployment, note the WebSocket URL from the CloudFormation outputs
+During the guided deployment, you'll be prompted for:
+- Stack name
+- AWS Region
+- Cognito User Pool ID
+- Cognito App Client ID
 
-## Implementation Details
+### After Deployment
 
-### 1. Connection Management
+The SAM deployment will output:
+- WebSocket URL
+- Connections Table ARN
 
-Connections are stored in DynamoDB with the following attributes:
-- `connectionId`: Unique identifier from API Gateway (Primary Key)
-- `timestamp`: Connection creation time
-- `ttl`: Time-to-live for automatic cleanup
-- `domainName`: API Gateway domain
-- `stage`: API Gateway stage
+## Authentication Flow
 
-### 2. WebSocket Communication
+### Client-Side Authentication
 
-The `websocket.ts` utility provides:
-- `createApiGatewayClient`: Creates a management API client
-- `sendMessageToClient`: Sends messages to connected clients
-- `getWebSocketEndpoint`: Generates endpoint URLs
+The client must authenticate with Cognito and store the JWT token in an HTTP-only cookie:
 
-### 3. Request/Response Handling
-
-The `lambda.ts` utility provides:
-- `createResponse`: Creates standard API Gateway responses
-- `parseWebSocketEvent`: Parses incoming WebSocket messages
-- `extractConnectionInfo`: Gets connection details from events
-
-## Adding LLM Streaming
-
-To implement LLM streaming, modify `src/services/message.service.ts`:
-
-1. Process the user's message from the WebSocket event
-2. Call your LLM service (OpenAI, Anthropic, etc.)
-3. Stream tokens back to the client using `sendMessageToClient`
-
-Example flow:
-```typescript
-// In message.service.ts
-const response = await callLlmService(message.data);
-const apiGatewayClient = createApiGatewayClient(endpoint);
-
-// Stream chunks back to the client
-for (const chunk of response.stream) {
-  await sendMessageToClient(apiGatewayClient, connectionId, {
-    type: 'chunk',
-    content: chunk
-  });
-}
-
-// Send completion message
-await sendMessageToClient(apiGatewayClient, connectionId, {
-  type: 'done'
-});
+```javascript
+// After authenticating with Cognito
+document.cookie = `auth=${tokens.idToken}; path=/; secure; HttpOnly; SameSite=Strict`;
 ```
 
-## Troubleshooting
+### Connection Process
 
-### Common Issues
+1. Client initiates WebSocket connection
+2. Browser automatically includes HTTP-only cookies
+3. API Gateway extracts and validates the token
+4. If valid, the $connect Lambda is invoked
+5. $connect Lambda stores the connection in DynamoDB
+6. Connection is established
 
-1. **WebSocket Connection Errors**:
-   - Check CORS settings in API Gateway
-   - Verify SSL configuration for wss:// connections
-   - Ensure IAM permissions are correct
+### Security Notes
 
-2. **Lambda Execution Issues**:
-   - Check CloudWatch logs for errors
-   - Verify environment variables are set correctly
-   - Ensure DynamoDB table exists and is accessible
+- Authentication happens at the connection level
+- Once authenticated, the connectionId acts as a session identifier
+- Message Lambdas don't need to re-validate tokens
+- The connect handler stores user identity for authorization checks
 
-3. **Local Server Issues**:
-   - If AWS SDK errors occur, the mocking may need adjustment
-   - Check that all dependencies are installed
-   - Verify port 3000 is available
+## WebSocket API Usage
+
+### Connection
+
+Connect to the WebSocket API:
+
+```javascript
+const socket = new WebSocket('wss://your-api-id.execute-api.region.amazonaws.com/stage');
+```
+
+### Sending Messages
+
+Send JSON messages with an `action` field to route the message:
+
+```javascript
+socket.send(JSON.stringify({
+  action: 'message',
+  data: {
+    content: 'Hello world',
+    recipient: 'all'
+  }
+}));
+```
+
+### Receiving Messages
+
+```javascript
+socket.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Received:', data);
+};
+```
+
+## Lambda Functions
+
+### $connect Handler
+
+- Validates the connection
+- Extracts user information from Cognito claims
+- Stores connection details in DynamoDB
+
+### $disconnect Handler
+
+- Cleans up the connection from DynamoDB
+- Performs any necessary cleanup
+
+### message Handler
+
+- Processes incoming messages
+- Can send responses to specific connections
+
+### default Handler
+
+- Handles messages with unknown actions
+- Provides useful error feedback
+
+## Monitoring and Debugging
+
+### CloudWatch Logs
+
+Each Lambda function logs to CloudWatch:
+
+```
+/aws/lambda/fastify-websocket-api-ConnectFunction-XXXX
+/aws/lambda/fastify-websocket-api-DisconnectFunction-XXXX
+/aws/lambda/fastify-websocket-api-MessageFunction-XXXX
+/aws/lambda/fastify-websocket-api-DefaultFunction-XXXX
+```
+
+### API Gateway Logs
+
+Enable execution logging in the API Gateway console for additional debugging.
 
 ## License
 
-ISC
+MIT
+````
